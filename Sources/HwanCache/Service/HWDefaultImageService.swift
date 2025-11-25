@@ -16,7 +16,7 @@ public final class HWDefaultImageService: HWImageService {
         self.cacheManager = cacheManager
     }
 
-    public func loadImage(from url: URL, displayMode: HWImageDisplayMode, cacheStrategy: HWCacheStrategy = .both) async throws -> PlatformImage {
+    public func loadImage(from url: URL, displayMode: HWImageDisplayMode, cacheStrategy: HWCacheStrategy = .both()) async throws -> PlatformImage {
         let urlString = url.absoluteString
         guard !urlString.isEmpty else {
             throw HWImageServiceError.invalidURL
@@ -48,13 +48,13 @@ public final class HWDefaultImageService: HWImageService {
         // Create image from data
         let image = try createImage(from: imageData, displayMode: displayMode)
 
-        // Store to cache
+        // Store to cache (no expiration for loadImage)
         try? await cacheManager.store(image: image, data: imageData, forKey: cacheKey, strategy: cacheStrategy)
 
         return image
     }
 
-    public func loadImage(from urlRequest: URLRequest, displayMode: HWImageDisplayMode, cacheStrategy: HWCacheStrategy = .both) async throws -> PlatformImage {
+    public func loadImage(from urlRequest: URLRequest, displayMode: HWImageDisplayMode, cacheStrategy: HWCacheStrategy = .both()) async throws -> PlatformImage {
         guard let url = urlRequest.url else {
             throw HWImageServiceError.invalidURLRequest
         }
@@ -90,10 +90,27 @@ public final class HWDefaultImageService: HWImageService {
         // Create image from data
         let image = try createImage(from: imageData, displayMode: displayMode)
 
-        // Store to cache
+        // Store to cache (no expiration for loadImage)
         try? await cacheManager.store(image: image, data: imageData, forKey: cacheKey, strategy: cacheStrategy)
 
         return image
+    }
+
+    public func store(imageData: Data, forKey key: String, displayMode: HWImageDisplayMode, cacheStrategy: HWCacheStrategy) async throws -> PlatformImage {
+        let cacheKey = HWCacheKey(url: key, displayMode: displayMode)
+
+        // Create image from data
+        let image = try createImage(from: imageData, displayMode: displayMode)
+
+        // Store to cache
+        try await cacheManager.store(image: image, data: imageData, forKey: cacheKey, strategy: cacheStrategy)
+
+        return image
+    }
+
+    public func removeFromCache(url: String, displayMode: HWImageDisplayMode, cacheStrategy: HWCacheStrategy) async {
+        let cacheKey = HWCacheKey(url: url, displayMode: displayMode)
+        await cacheManager.remove(forKey: cacheKey, strategy: cacheStrategy)
     }
 
     private func createImage(from data: Data, displayMode: HWImageDisplayMode) throws -> PlatformImage {

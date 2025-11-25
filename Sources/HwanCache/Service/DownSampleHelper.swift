@@ -10,7 +10,12 @@ import CoreGraphics
 import ImageIO
 
 enum DownSampleHelper {
-    static func downsampleImage(data: Data, to pointSize: CGSize, scale: CGFloat = PlatformScreen.main?.scale ?? 1.0) -> PlatformImage? {
+    static func downsampleImage(data: Data, to pointSize: CGSize) -> PlatformImage? {
+        #if canImport(UIkit)
+        let scale: CGFloat = PlatformScreen.main.scale
+        #else
+        let scale: CGFloat = PlatformScreen.main?.scale ?? 1.0
+        #endif
         let imageSourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let imageSource = CGImageSourceCreateWithData(data as CFData, imageSourceOptions) else {
             return nil

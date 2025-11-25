@@ -77,7 +77,15 @@ public final class HWCacheManager: @unchecked Sendable {
     }
 
     public func storeToDisk(_ data: Data, forKey key: String) async throws {
-        try await diskCache.store(data, forKey: key)
+        try await storeToDisk(data, forKey: key, expiration: nil)
+    }
+
+    public func storeToDisk(_ data: Data, forKey key: String, expiration: TimeInterval?) async throws {
+        guard let diskStorage = diskCache as? HWDiskStorage else {
+            try await diskCache.store(data, forKey: key)
+            return
+        }
+        try await diskStorage.store(data, forKey: key, expiration: expiration)
     }
 
     public func retrieveFromDisk(forKey key: String) async throws -> Data? {
@@ -89,16 +97,33 @@ public final class HWCacheManager: @unchecked Sendable {
     }
 
     public func store(image: PlatformImage, data: Data, forKey cacheKey: HWCacheKey, strategy: HWCacheStrategy) async throws {
-        switch strategy {
+        switch strategy.storageType {
         case .memoryOnly:
             try storeToMemory(image, forKey: cacheKey.memoryCacheKey)
 
         case .diskOnly:
-            try await storeToDisk(data, forKey: cacheKey.diskCacheKey)
+            try await storeToDisk(data, forKey: cacheKey.diskCacheKey, expiration: strategy.diskExpiration)
 
         case .both:
             try storeToMemory(image, forKey: cacheKey.memoryCacheKey)
-            try await storeToDisk(data, forKey: cacheKey.diskCacheKey)
+            try await storeToDisk(data, forKey: cacheKey.diskCacheKey, expiration: strategy.diskExpiration)
+
+        case .none:
+            break
+        }
+    }
+
+    public func remove(forKey cacheKey: HWCacheKey, strategy: HWCacheStrategy) async {
+        switch strategy.storageType {
+        case .memoryOnly:
+            removeFromMemory(forKey: cacheKey.memoryCacheKey)
+
+        case .diskOnly:
+            try? await removeFromDisk(forKey: cacheKey.diskCacheKey)
+
+        case .both:
+            removeFromMemory(forKey: cacheKey.memoryCacheKey)
+            try? await removeFromDisk(forKey: cacheKey.diskCacheKey)
 
         case .none:
             break
@@ -106,15 +131,15 @@ public final class HWCacheManager: @unchecked Sendable {
     }
 
     public func retrieve(forKey cacheKey: HWCacheKey, displayMode: HWImageDisplayMode, strategy: HWCacheStrategy) async throws -> PlatformImage? {
-        guard strategy != .none else { return nil }
+        guard strategy.storageType != .none else { return nil }
 
-        if strategy == .memoryOnly || strategy == .both {
+        if strategy.storageType == .memoryOnly || strategy.storageType == .both {
             if let cachedImage = retrieveFromMemory(forKey: cacheKey.memoryCacheKey) {
                 return cachedImage
             }
         }
 
-        if strategy == .diskOnly || strategy == .both {
+        if strategy.storageType == .diskOnly || strategy.storageType == .both {
             if let data = try await retrieveFromDisk(forKey: cacheKey.diskCacheKey) {
                 return try createImage(from: data, displayMode: displayMode)
             }

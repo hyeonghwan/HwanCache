@@ -39,7 +39,15 @@ final class HWDiskStorage: HWDiskCacheStorage, @unchecked Sendable {
         cacheDirectory.appendingPathComponent(key, isDirectory: false)
     }
 
+    private func metadataFileURL(forKey key: String) -> URL {
+        cacheDirectory.appendingPathComponent(key + ".meta", isDirectory: false)
+    }
+
     func store(_ data: Data, forKey key: String) async throws {
+        try await store(data, forKey: key, expiration: nil)
+    }
+
+    func store(_ data: Data, forKey key: String, expiration: TimeInterval?) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             queue.async { [weak self] in
                 guard let self else {
@@ -49,6 +57,11 @@ final class HWDiskStorage: HWDiskCacheStorage, @unchecked Sendable {
                 do {
                     let fileURL = self.fileURL(forKey: key)
                     try data.write(to: fileURL, options: .atomic)
+
+                    // Store metadata
+                    let metadata = DiskCacheMetadata(expiration: expiration)
+                    try self.storeMetadataSync(metadata, forKey: key)
+
                     try self.cleanupIfNeeded()
                     continuation.resume()
                 } catch {
@@ -71,6 +84,16 @@ final class HWDiskStorage: HWDiskCacheStorage, @unchecked Sendable {
                         continuation.resume(returning: nil)
                         return
                     }
+
+                    // Check expiration
+                    if let metadata = try? self.retrieveMetadataSync(forKey: key), metadata.isExpired {
+                        // Remove expired cache
+                        try? self.fileManager.removeItem(at: fileURL)
+                        try? self.fileManager.removeItem(at: self.metadataFileURL(forKey: key))
+                        continuation.resume(returning: nil)
+                        return
+                    }
+
                     try self.policy.didAccessFile(at: fileURL, fileManager: self.fileManager)
                     let data = try Data(contentsOf: fileURL)
                     continuation.resume(returning: data)
@@ -88,13 +111,13 @@ final class HWDiskStorage: HWDiskCacheStorage, @unchecked Sendable {
                     continuation.resume(throwing: HWImageServiceError.invalidImageData)
                     return
                 }
-                do {
-                    let fileURL = self.fileURL(forKey: key)
-                    try self.fileManager.removeItem(at: fileURL)
-                    continuation.resume()
-                } catch {
-                    continuation.resume(throwing: HWImageServiceError.cacheStoreFailed(error))
-                }
+                let fileURL = self.fileURL(forKey: key)
+                let metadataURL = self.metadataFileURL(forKey: key)
+
+                try? self.fileManager.removeItem(at: fileURL)
+                try? self.fileManager.removeItem(at: metadataURL)
+
+                continuation.resume()
             }
         }
     }
@@ -166,6 +189,23 @@ final class HWDiskStorage: HWDiskCacheStorage, @unchecked Sendable {
             includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .creationDateKey],
             options: .skipsHiddenFiles
         )
+    }
+
+    private func storeMetadataSync(_ metadata: DiskCacheMetadata, forKey key: String) throws {
+        let metadataURL = metadataFileURL(forKey: key)
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(metadata)
+        try data.write(to: metadataURL, options: .atomic)
+    }
+
+    private func retrieveMetadataSync(forKey key: String) throws -> DiskCacheMetadata? {
+        let metadataURL = metadataFileURL(forKey: key)
+        guard fileManager.fileExists(atPath: metadataURL.path) else {
+            return nil
+        }
+        let data = try Data(contentsOf: metadataURL)
+        let decoder = JSONDecoder()
+        return try decoder.decode(DiskCacheMetadata.self, from: data)
     }
 }
 

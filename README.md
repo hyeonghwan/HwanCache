@@ -1,12 +1,11 @@
 # HwanCache
 
-Fast and efficient image caching library for iOS(current)
+Fast and efficient image caching library for iOS
 
 ## Features
 
 - **Memory + Disk Caching**: Automatic multi-level caching
-- **No Hash Collisions**: URL-based keys (no hash collisions)
-- **Easy Debugging**: Readable cache file names
+- **Customizable Policies**: Extensible cache eviction strategies
 - **Thumbnail Downsampling (Memory-only)**: Thumbnails are generated on the fly and stored only in memory. 
   The disk cache stores only the original image to reduce disk usage and avoid redundant file writes.
 - **Swift Concurrency**: Modern async/await API
@@ -19,7 +18,7 @@ Fast and efficient image caching library for iOS(current)
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/yourusername/HwanCache.git", from: "1.0.0")
+    .package(url: "https://github.com/yourusername/HwanCache.git", from: "0.1.0")
 ]
 ```
 
@@ -99,11 +98,8 @@ print("Cache size: \(size) bytes")
 
 ## Cache File Structure
 
-```
-Library/Caches/HwanCache/
-|-- 3a7b19fef8cd9db212f8d338ce58d8ad2e5c57d0c3d824ae9f34c57b8cf2a1f2   // original image for URL```
-
-File names are human-readable for easy debugging!
+> Library/Caches/HwanCache/
+> |-- 3a7b19fef8cd9db212f8d338ce58d8ad2e5c57d0c3d824ae9f34c57b8cf2a1f2   // original image for URL
 
 
 ### Disk Cache Key Design
@@ -112,7 +108,6 @@ Therefore the disk cache key is derived solely from the original URL (SHA256 has
 and does not include thumbnail size or display options.
 
 Thumbnails are always memory-only and derived from the original disk data.
-
 
 
 ## Requirements
